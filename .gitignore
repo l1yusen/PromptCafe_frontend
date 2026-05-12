@@ -3,3 +3,8 @@ dist
 *.local
 .DS_Store
 *.tsbuildinfo
+
+# PPTX 解压与临时文本（本地分析用，勿提交）
+docs/_pptx_extract/
+docs/_pptx_slides_text.txt
+docs/_pptx_slides_text_utf8.txt
