@@ -8,3 +8,10 @@ dist
 docs/_pptx_extract/
 docs/_pptx_slides_text.txt
 docs/_pptx_slides_text_utf8.txt
+
+# Python mock API（本地临时后端，不提交）
+mock-prompt-server/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/

@@ -25,11 +25,14 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 
+import { setToken } from "../api/http";
+
 const username = ref("");
 const password = ref("");
 const router = useRouter();
 
 const goHome = async () => {
+  setToken("dev-mock-token");
   await router.push("/");
 };
 </script>
