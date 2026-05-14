@@ -1,26 +1,9 @@
 <template>
-  <div class="prompt-page">
-    <aside class="left-nav">
-      <div class="brand">PC</div>
-      <nav>
-        <button type="button" class="nav-item active">我的 Prompt</button>
-        <button type="button" class="nav-item" disabled title="待开发">社区</button>
-      </nav>
-      <div class="nav-bottom">设置</div>
-    </aside>
-
-    <section class="main-shell toast-host">
-      <Transition name="toast-pop">
-        <div v-if="toastMessage" class="toast-float" role="status">{{ toastMessage }}</div>
-      </Transition>
-      <header class="top-bar">
-        <div class="title">PromptHub 网页版</div>
-        <div class="top-actions">
-          <button type="button" class="text-btn" :disabled="listLoading" @click="refreshList">刷新</button>
-          <button type="button" class="text-btn primary-inline" @click="startCreate">+ 新建</button>
-          <button type="button" class="text-btn" @click="goLogin">退出登录</button>
-        </div>
-      </header>
+  <WorkspaceLayout title="PromptHub 网页版" :toast-message="toastMessage">
+    <template #actions>
+      <button type="button" class="text-btn" :disabled="listLoading" @click="refreshList">刷新</button>
+      <button type="button" class="text-btn primary-inline" @click="startCreate">+ 新建</button>
+    </template>
 
       <div class="workspace" ref="workspaceRef">
         <aside class="list-pane" :style="{ width: listWidthPx + 'px' }">
@@ -376,20 +359,17 @@
           </template>
         </div>
       </div>
-    </section>
-  </div>
+  </WorkspaceLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import * as api from "../api/prompts";
 import type { PromptListSortBy, PromptListSortOrder } from "../api/prompts";
-import { ApiError, clearToken } from "../api/http";
+import { ApiError } from "../api/http";
 import type { PromptDetail, PromptSummary, PromptVariableDef } from "../api/types";
+import WorkspaceLayout from "../layouts/WorkspaceLayout.vue";
 import { markdownToSafeHtml } from "../util/markdown";
-
-const router = useRouter();
 
 const items = ref<PromptSummary[]>([]);
 const total = ref(0);
@@ -868,11 +848,6 @@ async function previewFromForm() {
     errorMsg.value = e instanceof ApiError ? e.message : String(e);
   }
 }
-
-const goLogin = async () => {
-  clearToken();
-  await router.push("/login");
-};
 
 onMounted(() => {
   refreshList();
