@@ -15,3 +15,7 @@ mock-prompt-server/
 *.py[cod]
 .venv/
 venv/
+
+# Playwright test output
+test-results/
+playwright-report/

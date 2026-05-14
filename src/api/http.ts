@@ -31,7 +31,7 @@ export class ApiError extends Error {
   }
 }
 
-/** 解析 `{ data, error }`；成功返回 `data`；204 无体返回 `undefined` */
+/** 解析 `{ data, error }` 或 `{ code, message, data }`；成功返回 `data`；204 无体返回 `undefined` */
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T | undefined> {
   const url = `${baseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
@@ -56,16 +56,28 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     throw new ApiError(res.status, { code: "PARSE_ERROR", message: "响应不是合法 JSON" });
   }
 
-  const envelope = json as { data?: unknown; error?: ApiErrorBody | null };
+  const envelope = json as {
+    data?: unknown;
+    error?: ApiErrorBody | null;
+    code?: number;
+    message?: string;
+  };
 
   if (envelope.error) {
     throw new ApiError(res.status, envelope.error);
   }
 
+  if (typeof envelope.code === "number" && envelope.code !== 0) {
+    throw new ApiError(res.status, {
+      code: String(envelope.code),
+      message: envelope.message || `请求失败 (${envelope.code})`
+    });
+  }
+
   if (!res.ok) {
     throw new ApiError(res.status, {
       code: "HTTP_ERROR",
-      message: `请求失败 (${res.status})`
+      message: envelope.message || `请求失败 (${res.status})`
     });
   }
 
