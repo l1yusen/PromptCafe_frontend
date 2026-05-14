@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { getAuthMe, getStoredUser, isAuthenticated } from "../api/auth";
+import CommunityPage from "../pages/CommunityPage.vue";
 import LoginPage from "../pages/LoginPage.vue";
 import PromptHomePage from "../pages/PromptHomePage.vue";
 import PromptHomeMain from "../pages/PromptHomeMain.vue";
@@ -39,6 +40,7 @@ const router = createRouter({
         }
       ]
     },
+    { path: "/community", name: "community", component: CommunityPage, meta: { requiresAuth: true } },
     { path: "/profile", name: "profile", component: ProfilePage, meta: { requiresAuth: true } },
     { path: "/admin/reviews", name: "admin-reviews", component: AdminReviewPage, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: "/admin/users", name: "admin-users", component: AdminUsersPage, meta: { requiresAuth: true, requiresAdmin: true } },

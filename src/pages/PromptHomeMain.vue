@@ -59,6 +59,10 @@
                 <footer class="bottom-actions">
                   <button type="button" class="primary ghost" @click="copyFullText">复制全文</button>
                   <button type="button" class="light" @click="previewFromDetail">预览渲染</button>
+                  <button type="button" class="light" @click="openAiConfig">AI 配置</button>
+                  <button type="button" class="light" @click="openAiPolish">AI 润色</button>
+                  <button type="button" class="light" @click="openAiTest">AI 测试</button>
+                  <button type="button" class="light" @click="openSharePanel">分享到社区</button>
                   <button type="button" class="light" @click="goToVersionsPage">历史版本</button>
                   <button type="button" class="light" @click="startEdit">编辑</button>
                   <button type="button" class="light" @click="duplicateCurrent">复制为新稿</button>
@@ -149,12 +153,177 @@
                 <footer class="bottom-actions">
                   <button type="button" class="primary" :disabled="saving" @click="savePrompt">保存</button>
                   <button type="button" class="light" :disabled="saving" @click="previewFromForm">预览渲染</button>
+                  <button type="button" class="light" :disabled="saving" @click="openAiConfig">AI 配置</button>
+                  <button type="button" class="light" :disabled="saving" @click="openAiPolish">AI 润色</button>
+                  <button type="button" class="light" :disabled="saving" @click="openAiTest">AI 测试</button>
                   <button type="button" class="light" @click="cancelEdit">取消</button>
                 </footer>
               </template>
 
               <div v-else-if="detailLoading" class="muted center-pad">加载详情…</div>
-              <div v-else class="muted center-pad">请从列表选择一条 Prompt，或点击「新建」。</div>
+              <div v-else class="muted center-pad">
+                请从列表选择一条 Prompt，或点击「新建」。
+                <button type="button" class="text-btn sm" @click="openAiConfig">AI 配置</button>
+              </div>
+
+              <section v-if="aiPanel" class="tool-panel">
+                <div class="tool-panel-head">
+                  <h3>{{ aiPanelTitle }}</h3>
+                  <button type="button" class="preview-close-btn" aria-label="关闭" @click="closeAiPanel">×</button>
+                </div>
+
+                <template v-if="aiPanel === 'config'">
+                  <div class="form-grid compact-form">
+                    <label class="fg-label">服务商</label>
+                    <select v-model="aiConfig.provider" class="fg-input">
+                      <option value="openai">OpenAI</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                    <label class="fg-label">Base URL</label>
+                    <input v-model="aiConfig.baseUrl" class="fg-input" type="url" placeholder="可选" />
+                    <label class="fg-label">API Key</label>
+                    <input v-model="aiConfig.apiKey" class="fg-input" type="password" autocomplete="new-password" />
+                  </div>
+                  <div class="ai-status-row">
+                    <span>密钥：{{ aiKeyStatus?.configured ? "已配置" : "未配置" }}</span>
+                    <span v-if="aiKeyStatus?.maskedKey">{{ aiKeyStatus.maskedKey }}</span>
+                    <span v-if="guestQuota">游客额度：{{ guestQuota.remainingCount }} / {{ guestQuota.dailyLimit }}</span>
+                  </div>
+                  <div class="bottom-actions inline-actions">
+                    <button type="button" class="primary" :disabled="aiLoading" @click="saveAiConfig">保存配置</button>
+                    <button type="button" class="light" :disabled="aiLoading" @click="loadAiStatus">刷新状态</button>
+                    <button type="button" class="danger" :disabled="aiLoading || !aiKeyStatus?.configured" @click="deleteAiConfig">
+                      删除密钥
+                    </button>
+                  </div>
+                </template>
+
+                <template v-else-if="aiPanel === 'polish'">
+                  <div class="form-grid compact-form">
+                    <label class="fg-label">语气</label>
+                    <select v-model="polishForm.tone" class="fg-input">
+                      <option value="formal">正式</option>
+                      <option value="casual">自然</option>
+                      <option value="concise">简洁</option>
+                      <option value="academic">学术</option>
+                      <option value="creative">创意</option>
+                    </select>
+                    <label class="fg-label">语言</label>
+                    <select v-model="polishForm.language" class="fg-input">
+                      <option value="zh-CN">中文</option>
+                      <option value="en-US">英文</option>
+                    </select>
+                    <label class="fg-label">长度</label>
+                    <select v-model="polishForm.lengthPreference" class="fg-input">
+                      <option value="short">更短</option>
+                      <option value="medium">适中</option>
+                      <option value="long">更详细</option>
+                    </select>
+                  </div>
+                  <div class="bottom-actions inline-actions">
+                    <button type="button" class="primary" :disabled="aiLoading" @click="runPolish">开始润色</button>
+                    <button type="button" class="light" :disabled="!polishResult" @click="adoptPolishResult">应用到编辑区</button>
+                  </div>
+                  <div v-if="polishResult" class="ai-result-grid">
+                    <div>
+                      <div class="label">优化结果</div>
+                      <div class="value pre">{{ polishResult.optimized }}</div>
+                    </div>
+                    <div>
+                      <div class="label">建议</div>
+                      <ul class="suggestion-list">
+                        <li v-for="(item, idx) in polishResult.suggestions" :key="idx">{{ item }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <div class="form-grid compact-form">
+                    <label class="fg-label">服务商</label>
+                    <select v-model="testForm.provider" class="fg-input" @change="syncDefaultModel">
+                      <option value="openai">OpenAI</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                    <label class="fg-label">模型</label>
+                    <select v-if="currentModelOptions.length" v-model="testForm.model" class="fg-input">
+                      <option v-for="model in currentModelOptions" :key="model" :value="model">{{ model }}</option>
+                    </select>
+                    <input v-else v-model="testForm.model" class="fg-input" type="text" placeholder="输入模型名" />
+                    <label class="fg-label">Temperature</label>
+                    <input v-model.number="testForm.temperature" class="fg-input" type="number" min="0" max="2" step="0.1" />
+                    <label class="fg-label">Max Tokens</label>
+                    <input v-model.number="testForm.maxTokens" class="fg-input" type="number" min="1" step="1" />
+                  </div>
+                  <div v-if="activeVariables.length" class="test-vars">
+                    <div class="label">测试变量</div>
+                    <div v-for="v in activeVariables" :key="v.name" class="test-var-row">
+                      <span>{{ v.name }}</span>
+                      <input v-model="testVariables[v.name]" class="fg-input" type="text" :placeholder="v.description || v.name" />
+                    </div>
+                  </div>
+                  <div class="bottom-actions inline-actions">
+                    <button type="button" class="primary" :disabled="aiLoading" @click="runAiTest">运行测试</button>
+                    <button type="button" class="light" :disabled="!testResult?.output" @click="copyAiTestOutput">复制输出</button>
+                    <button type="button" class="light" :disabled="aiLoading" @click="loadTestRecords">刷新记录</button>
+                  </div>
+                  <div v-if="testResult" class="ai-result-grid">
+                    <div>
+                      <div class="label">模型输出</div>
+                      <div class="value pre">{{ testResult.output }}</div>
+                    </div>
+                    <div>
+                      <div class="label">渲染 Prompt</div>
+                      <div class="value pre">{{ testResult.renderedPrompt }}</div>
+                    </div>
+                  </div>
+                  <div v-if="testRecords.length" class="ai-records">
+                    <div class="label">测试记录</div>
+                    <div class="record-list">
+                      <button
+                        v-for="record in testRecords"
+                        :key="record.id"
+                        type="button"
+                        class="record-item"
+                        @click="openTestRecord(record.id)"
+                      >
+                        <strong>{{ record.model || record.provider || "AI 测试" }}</strong>
+                        <span>{{ record.outputSummary || record.inputSummary }}</span>
+                        <small>{{ formatTime(record.createdAt) }}</small>
+                      </button>
+                    </div>
+                    <div v-if="testRecordDetail" class="record-detail">
+                      <div class="label">记录详情</div>
+                      <div class="value pre">{{ testRecordDetail.output }}</div>
+                    </div>
+                  </div>
+                </template>
+              </section>
+
+              <section v-if="sharePanelOpen && detail" class="tool-panel">
+                <div class="tool-panel-head">
+                  <h3>分享到社区</h3>
+                  <button type="button" class="preview-close-btn" aria-label="关闭" @click="sharePanelOpen = false">×</button>
+                </div>
+                <div class="form-grid compact-form">
+                  <label class="fg-label">标题</label>
+                  <input v-model="shareForm.title" class="fg-input" type="text" maxlength="200" />
+                  <label class="fg-label">简介</label>
+                  <textarea v-model="shareForm.description" class="fg-textarea" rows="3" maxlength="1000" />
+                  <label class="fg-label">标签</label>
+                  <input v-model="shareTagText" class="fg-input" type="text" placeholder="用逗号分隔" />
+                  <label class="fg-label">使用说明</label>
+                  <textarea v-model="shareForm.usageGuide" class="fg-textarea" rows="3" maxlength="2000" />
+                </div>
+                <div class="bottom-actions inline-actions">
+                  <button type="button" class="primary" :disabled="shareLoading" @click="submitShare">提交审核</button>
+                  <button type="button" class="light" :disabled="shareLoading" @click="sharePanelOpen = false">取消</button>
+                </div>
+              </section>
             </main>
           </div>
 
@@ -225,8 +394,19 @@
 import { computed, inject, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import * as api from "../api/prompts";
+import * as ai from "../api/ai";
+import * as community from "../api/community";
 import { ApiError } from "../api/http";
 import type { PromptDetail, PromptVariableDef } from "../api/types";
+import type {
+  AIApiKeyStatus,
+  AIGuestQuota,
+  AIModelProviderItem,
+  AIPolishResult,
+  AITestRecordDetail,
+  AITestRecordListItem,
+  AITestResult
+} from "../api/ai";
 import { markdownToSafeHtml } from "../util/markdown";
 
 const route = useRoute();
@@ -272,6 +452,59 @@ const previewUserOut = ref("");
 
 const previewSystemHtml = computed(() => markdownToSafeHtml(previewSystemOut.value));
 const previewUserHtml = computed(() => markdownToSafeHtml(previewUserOut.value));
+
+type AiPanel = "config" | "polish" | "test";
+
+const aiPanel = ref<AiPanel | null>(null);
+const aiLoading = ref(false);
+const aiKeyStatus = ref<AIApiKeyStatus | null>(null);
+const guestQuota = ref<AIGuestQuota | null>(null);
+const aiModels = ref<AIModelProviderItem[]>([]);
+const polishResult = ref<AIPolishResult | null>(null);
+const testResult = ref<AITestResult | null>(null);
+const testRecords = ref<AITestRecordListItem[]>([]);
+const testRecordDetail = ref<AITestRecordDetail | null>(null);
+const testVariables = reactive<Record<string, string>>({});
+const sharePanelOpen = ref(false);
+const shareLoading = ref(false);
+const shareTagText = ref("");
+
+const aiConfig = reactive({
+  provider: "openai" as ai.AIProvider,
+  baseUrl: "",
+  apiKey: ""
+});
+
+const polishForm = reactive({
+  tone: "formal" as ai.AIPolishTone,
+  language: "zh-CN" as ai.AILanguage,
+  lengthPreference: "medium" as ai.AILengthPreference
+});
+
+const testForm = reactive({
+  provider: "openai" as ai.AIProvider,
+  model: "",
+  temperature: 0.7,
+  maxTokens: 1000
+});
+
+const shareForm = reactive({
+  title: "",
+  description: "",
+  usageGuide: ""
+});
+
+const aiPanelTitle = computed(() => {
+  if (aiPanel.value === "config") return "AI 配置";
+  if (aiPanel.value === "polish") return "AI 润色";
+  return "AI 测试";
+});
+
+const activeVariables = computed(() => (mode.value === "view" ? detail.value?.variables ?? [] : form.variables));
+
+const currentModelOptions = computed(() => {
+  return aiModels.value.find((item) => item.provider === testForm.provider)?.models ?? [];
+});
 
 function goToVersionsPage() {
   if (!detail.value) return;
@@ -569,6 +802,279 @@ async function previewFromForm() {
     applyRenderResult(r.renderedSystemPrompt, r.renderedUserPrompt);
   } catch (e) {
     errorMsg.value = e instanceof ApiError ? e.message : String(e);
+  }
+}
+
+function apiMessage(e: unknown) {
+  return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
+}
+
+function activePromptId() {
+  return mode.value === "view" ? detail.value?.id : selectedId.value ?? undefined;
+}
+
+function activePromptContent() {
+  return mode.value === "view" ? detail.value?.userPrompt ?? "" : form.userPrompt;
+}
+
+function activeFullPromptContent() {
+  const systemPrompt = mode.value === "view" ? detail.value?.systemPrompt ?? "" : form.systemPrompt;
+  const userPrompt = activePromptContent();
+  return [
+    systemPrompt.trim() ? `【系统提示词】\n${systemPrompt.trim()}` : "",
+    userPrompt.trim() ? `【用户提示词】\n${userPrompt.trim()}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function resetTestVariables() {
+  for (const key of Object.keys(testVariables)) delete testVariables[key];
+  for (const variable of activeVariables.value) {
+    if (!variable.name?.trim()) continue;
+    testVariables[variable.name.trim()] = (variable.value ?? "").toString();
+  }
+}
+
+async function loadAiStatus() {
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    const [status, quota] = await Promise.allSettled([ai.getApiKeyStatus(), ai.getGuestQuota()]);
+    if (status.status === "fulfilled") {
+      aiKeyStatus.value = status.value;
+      aiConfig.provider = status.value.provider ?? aiConfig.provider;
+      aiConfig.baseUrl = status.value.baseUrl ?? "";
+    }
+    if (quota.status === "fulfilled") guestQuota.value = quota.value;
+    if (status.status === "rejected" && quota.status === "rejected") throw status.reason;
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+async function loadAiModels() {
+  try {
+    const data = await ai.getModels();
+    aiModels.value = data.items ?? [];
+    syncDefaultModel();
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  }
+}
+
+function closeAiPanel() {
+  aiPanel.value = null;
+}
+
+function openAiConfig() {
+  aiPanel.value = "config";
+  sharePanelOpen.value = false;
+  void loadAiStatus();
+}
+
+function openAiPolish() {
+  if (!activePromptContent().trim()) {
+    showToast("请先填写用户提示词");
+    return;
+  }
+  aiPanel.value = "polish";
+  sharePanelOpen.value = false;
+  polishResult.value = null;
+  void loadAiStatus();
+}
+
+function openAiTest() {
+  if (!activePromptContent().trim()) {
+    showToast("请先填写用户提示词");
+    return;
+  }
+  aiPanel.value = "test";
+  sharePanelOpen.value = false;
+  resetTestVariables();
+  void loadAiStatus();
+  void loadAiModels();
+  void loadTestRecords();
+}
+
+async function saveAiConfig() {
+  if (!aiConfig.apiKey.trim()) {
+    errorMsg.value = "API Key 不能为空";
+    return;
+  }
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    aiKeyStatus.value = await ai.saveApiKey({
+      provider: aiConfig.provider,
+      apiKey: aiConfig.apiKey.trim(),
+      baseUrl: aiConfig.baseUrl.trim() || undefined
+    });
+    aiConfig.apiKey = "";
+    showToast("AI 配置已保存");
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+async function deleteAiConfig() {
+  if (!confirm("确定删除当前 AI API Key？")) return;
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    await ai.deleteApiKey();
+    aiKeyStatus.value = null;
+    aiConfig.apiKey = "";
+    showToast("AI 密钥已删除");
+    await loadAiStatus();
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+async function runPolish() {
+  const content = activePromptContent().trim();
+  if (!content) {
+    errorMsg.value = "没有可润色的用户提示词";
+    return;
+  }
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    polishResult.value = await ai.polishPrompt({
+      promptId: activePromptId(),
+      content,
+      tone: polishForm.tone,
+      language: polishForm.language,
+      lengthPreference: polishForm.lengthPreference
+    });
+    showToast("润色完成");
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+function adoptPolishResult() {
+  if (!polishResult.value) return;
+  if (mode.value === "view") startEdit();
+  form.userPrompt = polishResult.value.optimized;
+  showToast("已应用到编辑区，保存后生效");
+}
+
+function syncDefaultModel() {
+  const options = currentModelOptions.value;
+  if (options.length && !options.includes(testForm.model)) {
+    testForm.model = options[0];
+  }
+}
+
+async function runAiTest() {
+  const content = activeFullPromptContent();
+  if (!content.trim()) {
+    errorMsg.value = "没有可测试的 Prompt 内容";
+    return;
+  }
+  if (!testForm.model.trim()) {
+    errorMsg.value = "请选择或填写模型";
+    return;
+  }
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    testResult.value = await ai.testPrompt({
+      promptId: activePromptId(),
+      content,
+      variables: { ...testVariables },
+      provider: testForm.provider,
+      model: testForm.model.trim(),
+      temperature: testForm.temperature,
+      maxTokens: testForm.maxTokens
+    });
+    showToast("AI 测试完成");
+    await loadTestRecords();
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+async function loadTestRecords() {
+  try {
+    const data = await ai.listTestRecords({ promptId: activePromptId(), page: 1, pageSize: 8 });
+    testRecords.value = data.items ?? [];
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  }
+}
+
+async function openTestRecord(id: string) {
+  aiLoading.value = true;
+  errorMsg.value = "";
+  try {
+    testRecordDetail.value = await ai.getTestRecord(id);
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+function copyAiTestOutput() {
+  if (!testResult.value?.output) return;
+  copyPlain(testResult.value.output);
+}
+
+function openSharePanel() {
+  if (!detail.value) {
+    showToast("请先选择已保存的 Prompt");
+    return;
+  }
+  aiPanel.value = null;
+  sharePanelOpen.value = true;
+  shareForm.title = detail.value.title;
+  shareForm.description = detail.value.description ?? "";
+  shareForm.usageGuide = "请根据变量说明填写后使用。";
+  shareTagText.value = (detail.value.tags ?? []).join(", ");
+}
+
+async function submitShare() {
+  if (!detail.value) return;
+  const title = shareForm.title.trim();
+  const description = shareForm.description.trim();
+  const usageGuide = shareForm.usageGuide.trim();
+  if (!title || !description || !usageGuide) {
+    errorMsg.value = "标题、简介和使用说明不能为空";
+    return;
+  }
+  shareLoading.value = true;
+  errorMsg.value = "";
+  try {
+    const tags = shareTagText.value
+      .split(/[,，]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    await community.sharePrompt({
+      promptId: detail.value.id,
+      title,
+      description,
+      usageGuide,
+      tags
+    });
+    sharePanelOpen.value = false;
+    showToast("已提交社区审核");
+  } catch (e) {
+    errorMsg.value = apiMessage(e);
+  } finally {
+    shareLoading.value = false;
   }
 }
 
@@ -1326,8 +1832,115 @@ onUnmounted(() => {
   border-left: 3px solid #cbd5e1;
   color: #64748b;
 }
+.tool-panel {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  background: #fbfcff;
+}
+.tool-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.tool-panel-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1f2937;
+}
+.compact-form {
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px 12px;
+}
+.inline-actions {
+  margin-top: 12px;
+}
+.ai-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #5b6475;
+}
+.ai-result-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+.suggestion-list {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #4b5563;
+  line-height: 1.55;
+}
+.test-vars {
+  margin-top: 12px;
+}
+.test-var-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.test-var-row span {
+  color: #5b6475;
+  font-size: 13px;
+  word-break: break-word;
+}
+.ai-records {
+  margin-top: 14px;
+}
+.record-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.record-item {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #374151;
+  text-align: left;
+  cursor: pointer;
+}
+.record-item:hover {
+  border-color: #cfd6e6;
+  background: #f8fafc;
+}
+.record-item span,
+.record-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-item small {
+  color: #9099ab;
+}
+.record-detail {
+  margin-top: 12px;
+}
 @media (max-width: 960px) {
   .preview-cols {
+    grid-template-columns: 1fr;
+  }
+  .ai-result-grid,
+  .record-item,
+  .test-var-row {
     grid-template-columns: 1fr;
   }
 }

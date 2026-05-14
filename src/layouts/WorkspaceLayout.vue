@@ -4,6 +4,7 @@
       <div class="brand">PC</div>
       <nav class="main-nav">
         <RouterLink to="/" class="nav-link" active-class="active">我的 Prompt</RouterLink>
+        <RouterLink to="/community" class="nav-link" active-class="active">社区</RouterLink>
         <RouterLink to="/profile" class="nav-link" active-class="active">个人中心</RouterLink>
         <template v-if="currentUser?.role === 'admin'">
           <div class="nav-section">管理</div>
