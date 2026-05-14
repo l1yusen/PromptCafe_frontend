@@ -76,6 +76,32 @@ export type PromptRenderResult = {
   renderedUserPrompt: string;
 };
 
+/** 单条历史版本快照（与主表字段风格一致，camelCase） */
+export type PromptVersionRecord = {
+  id: string;
+  promptId: string;
+  versionNumber: number;
+  title: string;
+  description?: string | null;
+  systemPrompt?: string | null;
+  userPrompt: string;
+  variables?: PromptVariableDef[];
+  tags?: string[];
+  note?: string | null;
+  createdAt: string;
+};
+
+export type PromptVersionDiffData = {
+  fromVersion: PromptVersionRecord;
+  toVersion: PromptVersionRecord;
+};
+
+export type PromptRollbackResult = {
+  message: string;
+  newVersionId: string;
+  currentVersionNumber: number;
+};
+
 export type AdminPrompt = {
   id: string;
   userId: string;

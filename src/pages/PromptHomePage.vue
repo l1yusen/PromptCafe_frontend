@@ -81,7 +81,7 @@
               v-for="item in items"
               :key="item.id"
               class="list-item list-item-block"
-              :class="{ active: item.id === selectedId && mode === 'view' }"
+              :class="{ active: item.id === listActiveId && route.query.create !== '1' }"
               @click="openItem(item.id)"
             >
               <div class="list-item-inner">
@@ -104,7 +104,7 @@
               v-for="item in items"
               :key="item.id"
               class="prompt-card"
-              :class="{ active: item.id === selectedId && mode === 'view' }"
+              :class="{ active: item.id === listActiveId && route.query.create !== '1' }"
               @click="openItem(item.id)"
             >
               <h3 class="prompt-card-title">
@@ -149,227 +149,24 @@
           @mousedown.prevent="startResizeList"
         />
 
-        <div class="right-workspace" ref="rightWorkspaceRef">
-          <div class="detail-scroll">
-            <main class="detail-pane">
-              <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
-
-              <template v-if="mode === 'view' && detail && !detailLoading">
-                <h2 class="detail-title-line">{{ detail.title }}</h2>
-                <p class="meta">
-                  {{ formatTime(detail.updatedAt) }} · v{{ detail.currentVersion }} ·
-                  {{ detail.visibility === "public" ? "公开" : "私有" }}
-                </p>
-                <p class="detail-desc" :class="{ muted: !detail.description?.trim() }">
-                  {{ detail.description?.trim() || "暂无描述" }}
-                </p>
-                <div v-if="detail.tags?.length" class="tag-row">
-                  <span v-for="(t, ti) in detail.tags" :key="`${detail.id}-dtag-${ti}`" class="tag-chip">{{ t }}</span>
-                </div>
-
-                <div class="field">
-                  <div class="label label-with-action">
-                    <span>系统提示词</span>
-                    <button
-                      type="button"
-                      class="icon-copy-btn"
-                      title="复制系统提示词"
-                      aria-label="复制系统提示词"
-                      @click.stop="copyPlain(detail.systemPrompt ?? '')"
-                    >
-                      <svg class="copy-svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          d="M7 3.5A1.5 1.5 0 018.5 2h6A1.5 1.5 0 0116 3.5v10a1.5 1.5 0 01-1.5 1.5H11v1.5A1.5 1.5 0 019.5 18h-6A1.5 1.5 0 012 16.5v-10A1.5 1.5 0 013.5 5H7V3.5zm0 2H3.5v10h6v-10zm2-1v10h6v-10h-6z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div class="value pre">{{ detail.systemPrompt || "（空）" }}</div>
-                </div>
-                <div class="field">
-                  <div class="label label-with-action">
-                    <span>用户提示词</span>
-                    <button
-                      type="button"
-                      class="icon-copy-btn"
-                      title="复制用户提示词"
-                      aria-label="复制用户提示词"
-                      @click.stop="copyPlain(detail.userPrompt)"
-                    >
-                      <svg class="copy-svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          d="M7 3.5A1.5 1.5 0 018.5 2h6A1.5 1.5 0 0116 3.5v10a1.5 1.5 0 01-1.5 1.5H11v1.5A1.5 1.5 0 019.5 18h-6A1.5 1.5 0 012 16.5v-10A1.5 1.5 0 013.5 5H7V3.5zm0 2H3.5v10h6v-10zm2-1v10h6v-10h-6z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div class="value pre">{{ detail.userPrompt }}</div>
-                </div>
-
-                <footer class="bottom-actions">
-                  <button type="button" class="primary ghost" @click="copyFullText">复制全文</button>
-                  <button type="button" class="light" @click="previewFromDetail">预览渲染</button>
-                  <button type="button" class="light" @click="startEdit">编辑</button>
-                  <button type="button" class="light" @click="duplicateCurrent">复制为新稿</button>
-                  <button type="button" class="danger" @click="removeCurrent">删除</button>
-                </footer>
-              </template>
-
-              <template v-else-if="(mode === 'edit' || mode === 'create') && !detailLoading">
-                <h2>{{ mode === "create" ? "新建 Prompt" : "编辑 Prompt" }}</h2>
-                <p class="meta muted">保存后将更新列表；标签在保存时一并提交。</p>
-
-                <div class="form-grid">
-                  <label class="fg-label">标题 *</label>
-                  <input v-model="form.title" class="fg-input" type="text" maxlength="200" />
-
-                  <label class="fg-label">简介</label>
-                  <input v-model="form.description" class="fg-input" type="text" />
-
-                  <label class="fg-label">可见性</label>
-                  <select v-model="form.visibility" class="fg-input">
-                    <option value="private">私有</option>
-                    <option value="public">公开</option>
-                  </select>
-
-                  <label class="fg-label">标签</label>
-                  <div class="tag-editor-cell">
-                    <div class="tag-input-row">
-                      <input
-                        v-model="formTagDraft"
-                        class="tag-input-main"
-                        type="text"
-                        maxlength="64"
-                        placeholder="输入标签后点 + 添加"
-                        @keydown.enter.prevent="addFormTag"
-                      />
-                      <button type="button" class="tag-add-btn" title="添加标签" @click="addFormTag">+</button>
-                    </div>
-                    <div v-if="form.tags.length" class="tag-chips-inline form-tag-chips">
-                      <span v-for="(t, i) in form.tags" :key="`form-tag-${i}-${t}`" class="filter-tag-chip">
-                        {{ t }}
-                        <button type="button" class="chip-remove" aria-label="移除标签" @click="removeFormTag(i)">
-                          ×
-                        </button>
-                      </span>
-                    </div>
-                  </div>
-
-                  <label class="fg-label">系统提示词</label>
-                  <textarea v-model="form.systemPrompt" class="fg-textarea" rows="4" placeholder="可空" />
-
-                  <label class="fg-label">用户提示词 *</label>
-                  <textarea v-model="form.userPrompt" class="fg-textarea" rows="8" placeholder="支持 {{变量名}}" />
-
-                  <div class="fg-full">
-                    <div class="label row-between">
-                      <span>变量定义</span>
-                      <button type="button" class="text-btn sm" @click="addVariableRow">+ 添加变量</button>
-                    </div>
-                    <div v-for="(row, idx) in form.variables" :key="idx" class="var-card">
-                      <div class="var-grid">
-                        <input v-model="row.name" class="fg-input" placeholder="name" />
-                        <select v-model="row.type" class="fg-input">
-                          <option value="text">text</option>
-                          <option value="textarea">textarea</option>
-                          <option value="number">number</option>
-                        </select>
-                        <label class="chk"><input v-model="row.required" type="checkbox" /> 必填</label>
-                        <button type="button" class="text-btn sm danger-text" @click="removeVariableRow(idx)">
-                          删除
-                        </button>
-                      </div>
-                      <input v-model="row.description" class="fg-input mt" type="text" placeholder="说明 description" />
-                      <input v-model="row.value" class="fg-input mt" type="text" placeholder="默认值 value（可选）" />
-                    </div>
-                  </div>
-                </div>
-
-                <footer class="bottom-actions">
-                  <button type="button" class="primary" :disabled="saving" @click="savePrompt">保存</button>
-                  <button type="button" class="light" :disabled="saving" @click="previewFromForm">预览渲染</button>
-                  <button type="button" class="light" @click="cancelEdit">取消</button>
-                </footer>
-              </template>
-
-              <div v-else-if="detailLoading" class="muted center-pad">加载详情…</div>
-              <div v-else class="muted center-pad">请从列表选择一条 Prompt，或点击「新建」。</div>
-            </main>
-          </div>
-
-          <template v-if="hasPreview">
-            <div
-              class="splitter-row"
-              :class="{ 'is-dragging': resizeAxis === 'preview' }"
-              role="separator"
-              aria-orientation="horizontal"
-              title="拖动调整预览区高度"
-              @mousedown.prevent="startResizePreview"
-            />
-            <div class="preview-stack" :style="{ height: previewHeightPx + 'px' }">
-              <div class="preview-stack-head">
-                <span class="preview-stack-title">渲染预览</span>
-                <button type="button" class="preview-close-btn" aria-label="关闭预览" title="关闭" @click="clearPreview">
-                  ×
-                </button>
-              </div>
-              <div class="preview-cols">
-                <section class="preview-section">
-                  <div class="preview-sec-head">
-                    <span class="preview-sec-title">系统提示词（渲染后）</span>
-                    <button
-                      type="button"
-                      class="icon-copy-btn preview-copy"
-                      title="复制渲染后的系统提示词"
-                      aria-label="复制渲染后的系统提示词"
-                      @click.stop="copyPlain(previewSystemOut)"
-                    >
-                      <svg class="copy-svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          d="M7 3.5A1.5 1.5 0 018.5 2h6A1.5 1.5 0 0116 3.5v10a1.5 1.5 0 01-1.5 1.5H11v1.5A1.5 1.5 0 019.5 18h-6A1.5 1.5 0 012 16.5v-10A1.5 1.5 0 013.5 5H7V3.5zm0 2H3.5v10h6v-10zm2-1v10h6v-10h-6z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div v-if="!previewSystemOut.trim()" class="preview-empty muted">（空）</div>
-                  <div v-else class="preview-md" v-html="previewSystemHtml" />
-                </section>
-                <section class="preview-section">
-                  <div class="preview-sec-head">
-                    <span class="preview-sec-title">用户提示词（渲染后）</span>
-                    <button
-                      type="button"
-                      class="icon-copy-btn preview-copy"
-                      title="复制渲染后的用户提示词"
-                      aria-label="复制渲染后的用户提示词"
-                      @click.stop="copyPlain(previewUserOut)"
-                    >
-                      <svg class="copy-svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path
-                          d="M7 3.5A1.5 1.5 0 018.5 2h6A1.5 1.5 0 0116 3.5v10a1.5 1.5 0 01-1.5 1.5H11v1.5A1.5 1.5 0 019.5 18h-6A1.5 1.5 0 012 16.5v-10A1.5 1.5 0 013.5 5H7V3.5zm0 2H3.5v10h6v-10zm2-1v10h6v-10h-6z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div v-if="!previewUserOut.trim()" class="preview-empty muted">（空）</div>
-                  <div v-else class="preview-md" v-html="previewUserHtml" />
-                </section>
-              </div>
-            </div>
-          </template>
+        <div class="right-workspace home-right-subview">
+          <RouterView />
         </div>
       </div>
   </WorkspaceLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import * as api from "../api/prompts";
 import type { PromptListSortBy, PromptListSortOrder } from "../api/prompts";
 import { ApiError } from "../api/http";
-import type { PromptDetail, PromptSummary, PromptVariableDef } from "../api/types";
+import type { PromptSummary } from "../api/types";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.vue";
-import { markdownToSafeHtml } from "../util/markdown";
+
+const route = useRoute();
+const router = useRouter();
 
 const items = ref<PromptSummary[]>([]);
 const total = ref(0);
@@ -386,28 +183,8 @@ const listViewMode = ref<"titles" | "cards">("titles");
 
 let listFilterDebounce: ReturnType<typeof setTimeout> | null = null;
 
-const selectedId = ref<string | null>(null);
-const detail = ref<PromptDetail | null>(null);
-const detailLoading = ref(false);
-
-type Mode = "view" | "edit" | "create";
-const mode = ref<Mode>("view");
-
-const form = reactive({
-  title: "",
-  description: "",
-  systemPrompt: "",
-  userPrompt: "",
-  visibility: "private" as "private" | "public",
-  tags: [] as string[],
-  variables: [] as PromptVariableDef[]
-});
-
-const formTagDraft = ref("");
-
 const errorMsg = ref("");
 const toastMessage = ref("");
-const saving = ref(false);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 function showToast(message: string, durationMs = 2800) {
@@ -423,47 +200,17 @@ function showToast(message: string, durationMs = 2800) {
 }
 
 const workspaceRef = ref<HTMLElement | null>(null);
-const rightWorkspaceRef = ref<HTMLElement | null>(null);
 const listWidthPx = ref(240);
-const previewHeightPx = ref(220);
-const resizeAxis = ref<"list" | "preview" | null>(null);
-
-const hasPreview = ref(false);
-const previewSystemOut = ref("");
-const previewUserOut = ref("");
-
-const previewSystemHtml = computed(() => markdownToSafeHtml(previewSystemOut.value));
-const previewUserHtml = computed(() => markdownToSafeHtml(previewUserOut.value));
+const resizeAxis = ref<"list" | null>(null);
 
 let dragStartClient = 0;
 let dragStartListW = 0;
-let dragStartPreviewH = 0;
-
-function clearPreview() {
-  hasPreview.value = false;
-  previewSystemOut.value = "";
-  previewUserOut.value = "";
-}
-
-function applyRenderResult(renderedSystem: string | null | undefined, renderedUser: string) {
-  previewSystemOut.value = renderedSystem ?? "";
-  previewUserOut.value = renderedUser;
-  hasPreview.value = true;
-}
 
 function startResizeList(e: MouseEvent) {
   resizeAxis.value = "list";
   dragStartClient = e.clientX;
   dragStartListW = listWidthPx.value;
   document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-}
-
-function startResizePreview(e: MouseEvent) {
-  resizeAxis.value = "preview";
-  dragStartClient = e.clientY;
-  dragStartPreviewH = previewHeightPx.value;
-  document.body.style.cursor = "row-resize";
   document.body.style.userSelect = "none";
 }
 
@@ -474,12 +221,6 @@ function onResizeMove(e: MouseEvent) {
     if (!rect) return;
     const max = Math.min(520, rect.width * 0.55);
     listWidthPx.value = Math.round(Math.min(max, Math.max(160, dragStartListW + delta)));
-  } else if (resizeAxis.value === "preview") {
-    const delta = dragStartClient - e.clientY;
-    const rect = rightWorkspaceRef.value?.getBoundingClientRect();
-    if (!rect) return;
-    const max = Math.max(120, rect.height - 120);
-    previewHeightPx.value = Math.round(Math.min(max, Math.max(80, dragStartPreviewH + delta)));
   }
 }
 
@@ -493,6 +234,16 @@ function onResizeEnd() {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
+const listActiveId = computed(() => {
+  const n = route.name;
+  if (n === "prompt-versions" || n === "prompt-versions-compare") {
+    return String(route.params.id ?? "").trim() || null;
+  }
+  const p = route.query.prompt;
+  if (typeof p === "string" && p.trim()) return p.trim();
+  return null;
+});
+
 function formatTime(iso: string) {
   try {
     return new Date(iso).toLocaleString("zh-CN");
@@ -503,7 +254,6 @@ function formatTime(iso: string) {
 
 type TitleSeg = { text: string; hit: boolean };
 
-/** 按当前搜索关键词拆分标题，用于列表/卡片/详情高亮（大小写不敏感）。 */
 function titleHighlightSegments(title: string): TitleSeg[] {
   const q = listKeyword.value.trim();
   if (!q) return [{ text: title, hit: false }];
@@ -540,30 +290,6 @@ function addListFilterTag() {
 function removeListFilterTag(index: number) {
   listFilterTags.value = listFilterTags.value.filter((_, i) => i !== index);
   scheduleListFilterReload();
-}
-
-function addFormTag() {
-  const t = formTagDraft.value.trim();
-  if (!t) return;
-  if (form.tags.includes(t)) {
-    formTagDraft.value = "";
-    return;
-  }
-  form.tags.push(t);
-  formTagDraft.value = "";
-}
-
-function removeFormTag(index: number) {
-  form.tags.splice(index, 1);
-}
-
-function varsToMap(vars: PromptVariableDef[]): Record<string, string> {
-  const m: Record<string, string> = {};
-  for (const v of vars) {
-    if (!v.name?.trim()) continue;
-    m[v.name.trim()] = (v.value ?? "").toString();
-  }
-  return m;
 }
 
 function scheduleListFilterReload() {
@@ -619,196 +345,12 @@ async function changePage(p: number) {
   await refreshList();
 }
 
-async function loadDetail(id: string) {
-  detailLoading.value = true;
-  detail.value = null;
-  errorMsg.value = "";
-  clearPreview();
-  try {
-    detail.value = await api.getPrompt(id);
-  } catch (e) {
-    detail.value = null;
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  } finally {
-    detailLoading.value = false;
-  }
-}
-
-async function openItem(id: string) {
-  mode.value = "view";
-  selectedId.value = id;
-  await loadDetail(id);
-}
-
-function resetForm() {
-  form.title = "";
-  form.description = "";
-  form.systemPrompt = "";
-  form.userPrompt = "";
-  form.visibility = "private";
-  form.tags = [];
-  form.variables = [];
-  formTagDraft.value = "";
-}
-
-function fillFormFromDetail(d: PromptDetail) {
-  form.title = d.title;
-  form.description = (d.description ?? "") as string;
-  form.systemPrompt = (d.systemPrompt ?? "") as string;
-  form.userPrompt = d.userPrompt;
-  form.visibility = d.visibility;
-  form.tags = [...(d.tags ?? [])];
-  form.variables = JSON.parse(JSON.stringify(d.variables ?? [])) as PromptVariableDef[];
+function openItem(id: string) {
+  void router.push({ name: "home-main", query: { prompt: id } });
 }
 
 function startCreate() {
-  mode.value = "create";
-  selectedId.value = null;
-  detail.value = null;
-  resetForm();
-  clearPreview();
-  errorMsg.value = "";
-}
-
-function startEdit() {
-  if (!detail.value) return;
-  mode.value = "edit";
-  fillFormFromDetail(detail.value);
-  clearPreview();
-  errorMsg.value = "";
-}
-
-function cancelEdit() {
-  clearPreview();
-  if (mode.value === "create") {
-    mode.value = "view";
-    detail.value = null;
-    selectedId.value = null;
-    return;
-  }
-  mode.value = "view";
-  if (selectedId.value) {
-    loadDetail(selectedId.value);
-  }
-}
-
-function addVariableRow() {
-  form.variables.push({
-    name: `var${form.variables.length + 1}`,
-    type: "text",
-    description: "",
-    required: false,
-    value: ""
-  });
-}
-
-function removeVariableRow(idx: number) {
-  form.variables.splice(idx, 1);
-}
-
-async function savePrompt() {
-  errorMsg.value = "";
-  const title = form.title.trim();
-  const userPrompt = form.userPrompt.trim();
-  if (!title || !userPrompt) {
-    errorMsg.value = "标题与用户提示词不能为空";
-    return;
-  }
-  saving.value = true;
-  try {
-    const tags = form.tags.map((x) => x.trim()).filter(Boolean);
-    const payload = {
-      title,
-      description: form.description.trim() || null,
-      systemPrompt: form.systemPrompt.trim() || null,
-      userPrompt,
-      variables: form.variables.filter((v) => v.name?.trim()),
-      visibility: form.visibility,
-      tags
-    };
-
-    if (mode.value === "create") {
-      const created = await api.createPrompt(payload);
-      showToast("已创建");
-      mode.value = "view";
-      selectedId.value = created.id;
-      detail.value = created;
-      await refreshList();
-      await loadDetail(created.id);
-    } else if (mode.value === "edit" && selectedId.value) {
-      const { tags: _t, ...putBody } = payload;
-      await api.updatePrompt(selectedId.value, putBody);
-      await api.replacePromptTags(selectedId.value, tags);
-      showToast("已保存");
-      mode.value = "view";
-      await refreshList();
-      await loadDetail(selectedId.value);
-    }
-  } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function removeCurrent() {
-  if (!detail.value) return;
-  if (!confirm(`确定删除「${detail.value.title}」？不可恢复。`)) return;
-  errorMsg.value = "";
-  try {
-    await api.deletePrompt(detail.value.id);
-    showToast("已删除");
-    selectedId.value = null;
-    detail.value = null;
-    mode.value = "view";
-    await refreshList();
-  } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  }
-}
-
-async function duplicateCurrent() {
-  if (!detail.value) return;
-  errorMsg.value = "";
-  try {
-    const copy = await api.copyPrompt(detail.value.id);
-    showToast("已复制为新稿");
-    await refreshList();
-    await openItem(copy.id);
-  } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  }
-}
-
-function copyFullText() {
-  if (!detail.value) return;
-  const parts = [
-    detail.value.systemPrompt ? `【系统】\n${detail.value.systemPrompt}` : "",
-    `【用户】\n${detail.value.userPrompt}`
-  ].filter(Boolean);
-  const text = parts.join("\n\n");
-  navigator.clipboard.writeText(text).then(
-    () => {
-      showToast("已复制到剪贴板");
-    },
-    () => {
-      errorMsg.value = "复制失败，请检查浏览器权限";
-    }
-  );
-}
-
-function copyPlain(text: string) {
-  const raw = text ?? "";
-  if (!raw.trim()) {
-    showToast("没有可复制的内容");
-    return;
-  }
-  navigator.clipboard.writeText(raw).then(
-    () => showToast("已复制到剪贴板"),
-    () => {
-      errorMsg.value = "复制失败，请检查浏览器权限";
-    }
-  );
+  void router.push({ name: "home-main", query: { create: "1" } });
 }
 
 function listDescPreview(item: PromptSummary): string {
@@ -820,37 +362,11 @@ function listDescTitle(item: PromptSummary): string {
   return d || "暂无简介";
 }
 
-async function previewFromDetail() {
-  if (!detail.value) return;
-  errorMsg.value = "";
-  try {
-    const r = await api.renderPrompt({
-      systemPrompt: detail.value.systemPrompt ?? null,
-      userPrompt: detail.value.userPrompt,
-      variables: varsToMap(detail.value.variables ?? [])
-    });
-    applyRenderResult(r.renderedSystemPrompt, r.renderedUserPrompt);
-  } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  }
-}
-
-async function previewFromForm() {
-  errorMsg.value = "";
-  try {
-    const r = await api.renderPrompt({
-      systemPrompt: form.systemPrompt.trim() || null,
-      userPrompt: form.userPrompt,
-      variables: varsToMap(form.variables)
-    });
-    applyRenderResult(r.renderedSystemPrompt, r.renderedUserPrompt);
-  } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : String(e);
-  }
-}
+provide("refreshPromptList", refreshList);
+provide("promptHubToast", showToast);
 
 onMounted(() => {
-  refreshList();
+  void refreshList();
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
 });
@@ -1578,6 +1094,13 @@ onUnmounted(() => {
   padding-left: 12px;
   border-left: 3px solid #cbd5e1;
   color: #64748b;
+}
+.home-right-subview {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 @media (max-width: 960px) {
   .preview-cols {
