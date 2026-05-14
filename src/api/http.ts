@@ -32,12 +32,14 @@ function baseUrl(): string {
 export class ApiError extends Error {
   readonly code: string | number;
   readonly status: number;
+  readonly detail?: string;
 
   constructor(status: number, body: ApiErrorBody) {
-    super(body.message);
+    super(body.detail?.trim() || body.message || String(body.code));
     this.name = "ApiError";
     this.code = body.code;
     this.status = status;
+    this.detail = body.detail;
   }
 }
 
@@ -99,7 +101,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       }
       throw new ApiError(res.status, {
         code: envelope.code ?? res.status,
-        message: envelope.detail ? `${envelope.message}：${envelope.detail}` : envelope.message ?? "请求失败"
+        message: envelope.message ?? "请求失败",
+        detail: envelope.detail
       });
     }
     return envelope.data as T;

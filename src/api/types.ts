@@ -1,6 +1,6 @@
 /** 与 docs/openapi-prompt-management.json 以及用户/管理员 OpenAPI 对齐（字段 camelCase） */
 
-export type ApiErrorBody = { code: string | number; message: string };
+export type ApiErrorBody = { code: string | number; message: string; detail?: string };
 
 export type ApiEnvelope<T> = { data: T; error: null } | { data: null; error: ApiErrorBody };
 
